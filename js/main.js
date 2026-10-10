@@ -72,6 +72,7 @@ function renderChrome() {
     $("#achBadge").textContent = `${opened}/${ACHIEVEMENTS.length}`;
   }
   renderBell();
+  renderTimerPill();
   Sync.render();
 }
 

@@ -35,7 +35,7 @@ const OrdersView = {
           <button data-f="all" class="on">Все</button><button data-f="undone">Не выполнены</button><button data-f="unpaid">Не оплачены</button>
         </div>
         <div class="split">
-          <button class="btn primary" id="addOrder" title="Ctrl+N">${icon("plus")} Новый заказ</button>
+          <button class="btn primary" id="addOrder" title="Новый заказ (Ctrl+N)">${icon("plus")}<span class="lbl">Новый заказ</span></button>
           <button class="btn primary split-more" id="addMore" title="Ещё способы">${icon("chev-d")}</button>
         </div>
         <div class="spacer"></div>
@@ -136,8 +136,8 @@ const OrdersView = {
     return `<tr data-id="${o.id}" class="${o.done ? "is-done" : ""} ${o.paid ? "is-paid" : ""} ${monthKey(o.date) !== this.month ? "is-other" : ""}">
       <td class="col-date"><span class="date-chip ${o.dateUnknown ? "unknown" : ""}" data-act="pick" title="${dateTitle}">${orderDateLabel(o, this.crossMonth)}<input type="date" class="hidden-date" data-f="date" value="${o.date}" tabindex="-1"></span></td>
       <td class="col-client"><input class="cell-in t-client" data-f="client" data-ac="client" value="${esc(o.client)}" placeholder="Имя клиента" spellcheck="false" autocomplete="off"></td>
-      <td class="col-service"><div class="svc ${color ? "has" : ""}" style="${color ? `--svc:${color}` : ""}"><input class="cell-in t-service" data-f="service" data-ac="service" value="${esc(o.service)}" placeholder="Наименование услуги" spellcheck="false" autocomplete="off"></div></td>
-      <td class="col-price"><input class="cell-in money" data-f="price" value="${o.price ? fmt(o.price) : ""}" placeholder="0" inputmode="numeric"></td>
+      <td class="col-service"><div class="svc ${color ? "has" : ""}" style="${color ? `--svc:${color}` : ""}"><input class="cell-in t-service" data-f="service" data-ac="service" value="${esc(o.service)}" placeholder="Наименование услуги" spellcheck="false" autocomplete="off">${timerBtn(o)}${subBtn(o)}</div></td>
+      <td class="col-price"><input class="cell-in money ${o.hourly ? "auto" : ""}" data-f="price" value="${o.price ? fmt(o.price) : ""}" placeholder="0" inputmode="numeric" ${o.hourly ? `readonly title="Почасовая: ${fmt(o.rate)} ₽/ч × ${fmtDur(timerElapsed(o))}. Ставка и время — в карточке заказа (⋯)"` : ""}></td>
       <td class="col-received"><div class="got">${multi ? `<button class="pay-count" data-act="edit" title="Платежей: ${o.payments.length}">${o.payments.length}</button>` : ""}<input class="cell-in money money-got" data-f="received" value="${o.received ? fmt(o.received) : ""}" placeholder="0" inputmode="numeric"></div></td>
       <td class="col-done c-chk"><button class="chk done ${o.done ? "on" : ""}" data-act="done" title="Заказ выполнен">${icon("check")}</button></td>
       <td class="col-paid c-chk"><button class="chk pay ${o.paid ? "on" : ""}" data-act="paid" title="Оплачен — остаток добавится платежом">${icon("check")}</button></td>
@@ -149,17 +149,20 @@ const OrdersView = {
         <button class="mini-ico ${o.remind ? "bell-on" : ""}" data-act="remind" title="${o.remind ? "Напоминание включено" : "Напоминание выключено"}">${icon("bell")}</button>
         <button class="mini-ico" data-act="edit" title="Подробнее: оплаты, дата">${icon("dots")}</button>
         <button class="mini-ico del" data-act="del" title="Удалить заказ">${icon("trash")}</button>
-      </div></td></tr>`;
+      </div></td></tr>${this.expanded.has(o.id) ? `<tr class="sub-tr" data-sub-of="${o.id}"><td></td><td colspan="8">${subListHTML(o)}</td></tr>` : ""}`;
   },
+  expanded: new Set(),   // у каких заказов раскрыт список подзадач
 
   /** Общие действия для строки таблицы и карточки доски. */
   act(o, act, btn) {
     if (act === "pick") { const inp = btn.querySelector("input"); try { inp.showPicker(); } catch { inp.focus(); } return; }
-    if (act === "done") { o.done = !o.done; o.doneDate = o.done ? todayISO() : null; }
+    if (act === "done") { o.done = !o.done; o.doneDate = o.done ? todayISO() : null; if (o.done && o.timerStart) { stopTimer(o); renderTimerPill(); } }
     if (act === "paid") setPaid(o, !o.paid);
     if (act === "remind") { o.remind = !o.remind; toast(o.remind ? "Напоминание включено" : "Напоминание выключено", o.service || o.client || "", "ok", "bell"); }
     if (act === "del") return this.remove(o);
     if (act === "repeat") return this.repeat(o);
+    if (act === "timer") return toggleTimer(o);
+    if (act === "subs") return this.toggleSubs(o);
     if (act === "edit") return OrderSheet.open(o.id);
     Store.commit("orders");
     this.refreshItem(o);
@@ -169,8 +172,18 @@ const OrdersView = {
     const tr = $(`#oBody tr[data-id="${o.id}"]`);
     if (!tr) return;
     const focused = document.activeElement && tr.contains(document.activeElement) ? document.activeElement.dataset.f : null;
-    tr.outerHTML = this.rowHTML(o);
+    const sub = tr.nextElementSibling;
+    if (sub && sub.dataset.subOf === o.id) sub.remove();
+    tr.insertAdjacentHTML("afterend", this.rowHTML(o));
+    tr.remove();
     if (focused) $(`#oBody tr[data-id="${o.id}"] [data-f="${focused}"]`)?.focus();
+  },
+  /** Раскрыть/свернуть подзадачи под заказом; пустой список сразу открывается с полем ввода. */
+  toggleSubs(o) {
+    const open = !this.expanded.has(o.id);
+    if (open) this.expanded.add(o.id); else this.expanded.delete(o.id);
+    this.refreshItem(o);
+    if (open) $(`[data-sub-of="${o.id}"] [data-s="new"]`)?.focus();
   },
 
   bindTable() {
@@ -205,7 +218,7 @@ const OrdersView = {
       if (f === "deadline") { o.deadline = inp.value || null; this.refreshItem(o); Store.commit("orders"); return; }
       if (f === "client" || f === "service") {
         o[f] = inp.value.trim();
-        if (!o.price) {
+        if (!o.price && !o.hourly) {
           const p = suggestPrice(o.client, o.service);
           if (p) { setPrice(o, p); const pi = tr.querySelector('[data-f="price"]'); if (pi && document.activeElement !== pi) pi.value = fmt(p); this.syncRowMoney(tr, o, "received"); }
         }
@@ -260,16 +273,17 @@ const OrdersView = {
       <div class="kc-service">${color ? `<i class="dot" style="background:${color}"></i>` : ""}${esc(o.service || "Услуга не указана")}</div>
       <div class="kc-foot">
         <span class="kc-money"><b>${money(o.price)}</b>${o.received && o.received < o.price ? `<small>получено ${money(o.received)}</small>` : ""}</span>
+        ${timerBtn(o)}${subBtn(o)}
         <button class="mini-ico" data-act="repeat" title="Повторить">${icon("copy")}</button>
         <button class="chk done ${o.done ? "on" : ""}" data-act="done" title="Выполнен">${icon("check")}</button>
         <button class="chk pay ${o.paid ? "on" : ""}" data-act="paid" title="Оплачен"><b class="rub">₽</b></button>
-      </div></div>`;
+      </div>${this.expanded.has(o.id) ? `<div class="kc-subs" data-sub-of="${o.id}">${subListHTML(o)}</div>` : ""}</div>`;
   },
   bindBoard() {
     const b = $("#oBoard");
     b.addEventListener("click", e => {
       const card = e.target.closest(".kcard");
-      if (!card) return;
+      if (!card || e.target.closest(".kc-subs")) return;   // подзадачи обрабатываются отдельно
       const o = Store.order(card.dataset.id);
       const btn = e.target.closest("[data-act]");
       if (btn) this.act(o, btn.dataset.act, btn); else OrderSheet.open(o.id);
@@ -287,6 +301,7 @@ const OrdersView = {
       if (to === "work") { o.done = false; o.doneDate = null; }
       else {
         if (!o.done) { o.done = true; o.doneDate = todayISO(); }
+        if (o.timerStart) { stopTimer(o); renderTimerPill(); }
         if (to === "paid" && debtOf(o) > 0) setPaid(o, true);
         if (to === "wait" && debtOf(o) === 0 && o.price > 0) setPaid(o, false);
       }
@@ -306,7 +321,7 @@ const OrdersView = {
     if (tr) { tr.classList.add("flash"); tr.scrollIntoView({ block: "center", behavior: "smooth" }); tr.querySelector('[data-f="client"]').focus(); }
   },
   add(fields = {}) {
-    const o = normalizeOrder({ date: this.newDate(), ...fields });
+    const o = normalizeOrder({ date: this.newDate(), ...hourlyDefaults(fields), ...fields });
     Store.orders.push(o);
     Store.commit("orders");
     this.focusNew(o);
@@ -314,7 +329,7 @@ const OrdersView = {
   },
   addMany(base, n) {
     const created = [];
-    for (let i = 0; i < n; i++) { const o = normalizeOrder({ ...base, createdAt: Date.now() + i }); Store.orders.push(o); created.push(o); }
+    for (let i = 0; i < n; i++) { const o = normalizeOrder({ ...hourlyDefaults(base), ...base, createdAt: Date.now() + i }); Store.orders.push(o); created.push(o); }
     Store.commit("orders");
     this.month = monthKey(base.date); this.filter = "all"; this.search = ""; $("#oSearch").value = "";
     this.render();
@@ -322,7 +337,7 @@ const OrdersView = {
     toast(`Добавлено заказов: ${n}`, [base.client, base.service].filter(Boolean).join(" — "), "ok", "plus");
   },
   repeat(o) {
-    const copy = normalizeOrder({ client: o.client, service: o.service, price: o.price, remind: o.remind, date: this.newDate() });
+    const copy = normalizeOrder({ client: o.client, service: o.service, price: o.hourly ? 0 : o.price, hourly: o.hourly, rate: o.rate, remind: o.remind, date: this.newDate() });
     Store.orders.push(copy);
     Store.commit("orders");
     this.renderList();
@@ -504,6 +519,116 @@ function deadlineBadge(o) {
   return `<span class="tag mute">${d} дн</span>`;
 }
 
+/* ---------- таймер почасовой оплаты ---------- */
+/** Почасовая оплата: включена у заказа или общим переключателем для всех невыполненных. */
+function hourlyOn(o) { return o.hourly || (Store.settings.hourlyAll && !o.done && !o.imported); }
+function hourlyDefaults(f) { return Store.settings.hourlyAll && !f.price ? { hourly: true, rate: Store.settings.hourlyRate } : {}; }
+function timerBtn(o) {
+  if (o.imported || !hourlyOn(o)) return "";
+  const ms = timerElapsed(o);
+  if (o.timerStart) return `<button class="tmr run" data-act="timer" title="Пауза">${icon("pause")}<span data-timer-id="${o.id}" data-fmt="clock">${fmtDur(ms, true)}</span></button>`;
+  if (o.done) return `<span class="tmr static" title="Отработано · ${fmt(o.rate)} ₽/ч">${icon("clock")}${fmtDur(ms)}</span>`;
+  if (ms) return `<button class="tmr paused" data-act="timer" title="Продолжить · ${fmt(o.rate)} ₽/ч">${icon("play")}<span>${fmtDur(ms, true).replace(/:\d\d$/, "")}</span></button>`;
+  return `<button class="tmr start" data-act="timer" title="Начать отсчёт · ${fmt(o.rate || Store.settings.hourlyRate)} ₽/ч">${icon("play")}<span>Начать</span></button>`;
+}
+function subBtn(o) {
+  const n = o.subtasks.length, d = o.subtasks.filter(s => s.done).length, open = OrdersView.expanded.has(o.id);
+  if (!n) return `<button class="sub-add ${hourlyOn(o) || open ? "show" : ""} ${open ? "open" : ""}" data-act="subs" data-for="${o.id}" title="Добавить подзадачу">${icon("plus")}</button>`;
+  return `<button class="sub-add show has ${d === n ? "all" : ""} ${open ? "open" : ""}" data-act="subs" data-for="${o.id}" title="${open ? "Свернуть" : "Показать"} подзадачи: ${d} из ${n}">${icon("chev-d")}${d}/${n}</button>`;
+}
+
+/* ---------- подзадачи: раскрывающийся список прямо под заказом ---------- */
+function subListHTML(o) {
+  return `<div class="sub-inline">
+    ${o.subtasks.map(s => `
+      <div class="sub-row ${s.done ? "done" : ""}" data-sid="${s.id}">
+        <button class="chk sm ${s.done ? "on" : ""}" data-s="toggle" title="Готово">${icon("check")}</button>
+        <input class="field sub-in" data-s="text" value="${esc(s.text)}" draggable="false">
+        <button class="mini-ico del" data-s="del" title="Удалить подзадачу">${icon("x")}</button></div>`).join("")}
+    <div class="sub-row add"><span class="chk sm ghost">${icon("plus")}</span><input class="field sub-in" data-s="new" placeholder="Новая подзадача — Enter" draggable="false"></div>
+  </div>`;
+}
+/** Перерисовать только список и кнопку-счётчик, не трогая строку (чтобы не терять фокус). */
+function refreshSubs(o, focusNew = false) {
+  $$(`[data-sub-of="${o.id}"]`).forEach(box => {
+    const host = box.matches("tr") ? box.querySelector("td[colspan]") : box;
+    host.innerHTML = subListHTML(o);
+  });
+  $$(`[data-act="subs"][data-for="${o.id}"]`).forEach(b => { b.outerHTML = subBtn(o); });
+  if (focusNew) $(`[data-sub-of="${o.id}"] [data-s="new"]`)?.focus();
+}
+function subOwner(el) { const box = el.closest("[data-sub-of]"); return box ? Store.order(box.dataset.subOf) : null; }
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-sub-of] [data-s]");
+  if (!b || b.tagName === "INPUT") return;
+  const o = subOwner(b), s = o && o.subtasks.find(x => x.id === b.closest("[data-sid]")?.dataset.sid);
+  if (!s) return;
+  if (b.dataset.s === "toggle") s.done = !s.done;
+  if (b.dataset.s === "del") o.subtasks = o.subtasks.filter(x => x !== s);
+  Store.commit("orders");
+  refreshSubs(o);
+});
+document.addEventListener("keydown", e => {
+  const inp = e.target.closest?.("[data-sub-of] [data-s]");
+  if (!inp) return;
+  const o = subOwner(inp);
+  if (e.key === "Escape") { OrdersView.expanded.delete(o.id); OrdersView.refreshItem(o); return; }
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  if (inp.dataset.s === "new" && inp.value.trim()) {
+    o.subtasks.push({ id: uid(), text: inp.value.trim(), done: false });
+    Store.commit("orders");
+    refreshSubs(o, true);
+  } else inp.blur();
+});
+document.addEventListener("change", e => {
+  const inp = e.target.closest?.('[data-sub-of] [data-s="text"]');
+  if (!inp) return;
+  const o = subOwner(inp), s = o && o.subtasks.find(x => x.id === inp.closest("[data-sid]").dataset.sid);
+  if (!s) return;
+  s.text = inp.value.trim();
+  if (!s.text) o.subtasks = o.subtasks.filter(x => x !== s);
+  Store.commit("orders");
+  if (!s.text) refreshSubs(o);
+});
+function toggleTimer(o, rerender = true) {
+  if (o.timerStart) {
+    stopTimer(o);
+    toast("Таймер остановлен", `${o.client || o.service || "Заказ"}: ${fmtDur(o.timeMs)} · ${money(o.price)}`, "ok", "clock");
+  } else {
+    const was = o.hourly;
+    startTimer(o);
+    toast("Таймер запущен", was ? `${o.client || o.service || "Заказ"} · ${fmt(o.rate)} ₽/ч` : `Заказ считается по часам: ${fmt(o.rate)} ₽/ч`, "ok", "play");
+  }
+  Store.commit("orders");
+  if (rerender) { if (currentTab === "orders") OrdersView.refreshItem(o); }
+  renderTimerPill();
+}
+function runningTimers() { return Store.orders.filter(o => o.timerStart); }
+function renderTimerPill() {
+  const pill = $("#timerPill");
+  if (!pill) return;
+  const list = runningTimers();
+  pill.hidden = !list.length;
+  if (!list.length) return;
+  const o = list[0];
+  pill.innerHTML = `<span class="tp-dot"></span><b data-timer-id="${o.id}" data-fmt="clock">${fmtDur(timerElapsed(o), true)}</b>
+    <span class="tp-name">${esc(o.client || o.service || "Заказ")}${list.length > 1 ? ` +${list.length - 1}` : ""}</span>
+    <span class="tp-stop" title="Остановить">${icon("pause")}</span>`;
+  pill.onclick = e => {
+    if (e.target.closest(".tp-stop")) { toggleTimer(o); if (currentTab !== "orders") TABS[currentTab].view.render(); }
+    else OrdersView.goTo(o.id);
+  };
+}
+setInterval(() => {
+  if (!Store.orders.some(o => o.timerStart)) return;
+  $$("[data-timer-id]").forEach(el => {
+    const o = Store.order(el.dataset.timerId);
+    if (o) el.textContent = fmtDur(timerElapsed(o), el.dataset.fmt === "clock");
+  });
+  $$("[data-timer-money]").forEach(el => { const o = Store.order(el.dataset.timerMoney); if (o) el.textContent = money(hourlyPrice(o)); });
+}, 1000);
+
 function upcomingDeadlines(days) {
   const t = todayISO(), lim = addDays(t, days);
   return Store.orders.filter(o => o.deadline && !o.done && o.deadline <= lim).sort((a, b) => a.deadline.localeCompare(b.deadline));
@@ -526,7 +651,7 @@ const OrderSheet = {
       <div class="sheet-grid">
         <label>Клиент<input class="field" data-f="client" data-ac="client" value="${esc(o.client)}" autocomplete="off"></label>
         <label>Услуга<input class="field" data-f="service" data-ac="service" value="${esc(o.service)}" autocomplete="off"></label>
-        <label>Прайс, ₽<input class="field" data-f="price" inputmode="numeric" value="${o.price ? fmt(o.price) : ""}"></label>
+        <label>Прайс, ₽${o.hourly ? ` <small class="muted">считается по времени</small>` : ""}<input class="field" data-f="price" inputmode="numeric" value="${o.price ? fmt(o.price) : ""}" ${o.hourly ? "readonly" : ""}></label>
         <label>Дата заказа
           <div class="row tight"><input class="field" type="date" data-f="date" value="${o.dateUnknown ? "" : o.date}">
           ${o.dateUnknown ? `<span class="tag">не указано</span>` : ""}</div></label>
@@ -535,6 +660,30 @@ const OrderSheet = {
           <button class="pill-toggle ${o.done ? "on" : ""}" data-t="done">${icon("check")} Выполнен</button>
           <button class="pill-toggle ${o.remind ? "on" : ""}" data-t="remind">${icon("bell")} Напоминать</button>
         </div>
+      </div>
+      <div class="sec-head"><b>${icon("clock")}Почасовая оплата</b><button class="toggle ${o.hourly ? "on" : ""}" data-hourly></button></div>
+      ${o.hourly ? `<div class="hourly-box">
+        <div class="hb-timer">
+          <div><div class="hb-time" data-timer-id="${o.id}" data-fmt="clock">${fmtDur(timerElapsed(o), true)}</div>
+            <div class="muted small">к оплате: ${fmtDur(billedMinutes(timerElapsed(o)) * 60000)} × ${money(o.rate)} = <b data-timer-money="${o.id}">${money(hourlyPrice(o))}</b></div></div>
+          <button class="btn ${o.timerStart ? "" : "primary"}" data-tmr>${icon(o.timerStart ? "pause" : "play")} ${o.timerStart ? "Пауза" : timerElapsed(o) ? "Продолжить" : "Начать"}</button>
+        </div>
+        <div class="hb-grid">
+          <label>Ставка, ₽/ч<input class="field" data-h="rate" inputmode="numeric" value="${fmt(o.rate)}"></label>
+          <label>Время вручную
+            <div class="row tight"><input class="field" data-h="hours" type="number" min="0" value="${Math.floor(timerElapsed(o) / 3600000)}"><span class="muted">ч</span>
+            <input class="field" data-h="mins" type="number" min="0" max="59" value="${Math.floor(timerElapsed(o) % 3600000 / 60000)}"><span class="muted">мин</span></div></label>
+        </div>
+        <div class="row tight" style="margin-top:8px"><button class="btn sm" data-h="save">${icon("check")} Записать время</button><button class="btn sm ghost" data-h="reset">Сбросить</button></div>
+      </div>` : `<div class="muted small sec-hint">Включите, чтобы прайс считался по времени: таймер или часы вручную. Ставка по умолчанию — ${money(Store.settings.hourlyRate)}/ч (меняется в настройках).</div>`}
+      <div class="sec-head"><b>${icon("list")}Подзадачи</b><span class="muted small">${o.subtasks.length ? `${o.subtasks.filter(s => s.done).length} из ${o.subtasks.length}` : ""}</span></div>
+      <div class="sub-list">${o.subtasks.map(s => `
+        <div class="sub-row ${s.done ? "done" : ""}" data-sid="${s.id}">
+          <button class="chk sm ${s.done ? "on" : ""}" data-s="toggle">${icon("check")}</button>
+          <input class="field sub-in" data-s="text" value="${esc(s.text)}" placeholder="Что сделать">
+          <button class="mini-ico del" data-s="del" title="Удалить">${icon("x")}</button>
+        </div>`).join("")}
+        <div class="sub-row add"><span class="chk sm ghost">${icon("plus")}</span><input class="field sub-in" data-s="new" placeholder="Добавить подзадачу и нажать Enter"></div>
       </div>
       <div class="pay-head"><b>Оплаты</b><span class="muted">получено ${money(o.received)} из ${money(o.price)}${debtOf(o) ? ` · долг <b class="red">${money(debtOf(o))}</b>` : ""}</span></div>
       <div class="pay-list">${o.payments.map(p => `
@@ -565,7 +714,7 @@ const OrderSheet = {
       const f = inp.dataset.f, v = inp.value.trim();
       if (f === "client" || f === "service") {
         o[f] = v;
-        if (!o.price) { const p = suggestPrice(o.client, o.service); if (p) { setPrice(o, p); return commit(true); } }
+        if (!o.price && !o.hourly) { const p = suggestPrice(o.client, o.service); if (p) { setPrice(o, p); return commit(true); } }
         if (f === "client") m.querySelector("h3").textContent = v || "Новый заказ";
       }
       if (f === "price") { setPrice(o, parseMoney(v)); return commit(true); }
@@ -575,7 +724,7 @@ const OrderSheet = {
     }));
     m.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
       const t = b.dataset.t;
-      if (t === "done") { o.done = !o.done; o.doneDate = o.done ? todayISO() : null; }
+      if (t === "done") { o.done = !o.done; o.doneDate = o.done ? todayISO() : null; if (o.done && o.timerStart) { stopTimer(o); renderTimerPill(); return commit(true); } }
       if (t === "remind") o.remind = !o.remind;
       b.classList.toggle("on", o[t]);
       commit();
@@ -592,6 +741,40 @@ const OrderSheet = {
       $$(".pay-row [data-p=amount]", m).pop()?.select();
     };
     m.querySelector("[data-payall]")?.addEventListener("click", () => { setPaid(o, true); commit(true); });
+
+    // почасовая оплата
+    m.querySelector("[data-hourly]").onclick = () => {
+      if (o.hourly) { if (o.timerStart) stopTimer(o); o.hourly = false; }
+      else { o.hourly = true; o.rate = o.rate || Store.settings.hourlyRate; setPrice(o, hourlyPrice(o)); }
+      commit(true);
+    };
+    m.querySelector("[data-tmr]")?.addEventListener("click", () => { toggleTimer(o, false); this.render(); });
+    m.querySelector('[data-h="rate"]')?.addEventListener("change", e => { o.rate = parseMoney(e.target.value); setPrice(o, hourlyPrice(o)); commit(true); });
+    const hv = k => Math.max(0, parseInt(m.querySelector(`[data-h="${k}"]`).value) || 0);
+    m.querySelector('[data-h="save"]')?.addEventListener("click", () => { setWorkTime(o, (hv("hours") * 60 + hv("mins")) * 60000); commit(true); toast("Время записано", `${fmtDur(o.timeMs)} · ${money(o.price)}`, "ok", "clock"); });
+    m.querySelector('[data-h="reset"]')?.addEventListener("click", async () => {
+      if (await confirmBox("Сбросить время?", "Таймер остановится, время станет 0.", "Сбросить", true)) { o.timerStart = null; setWorkTime(o, 0); Store.commit("orders"); }
+      this.render();
+    });
+
+    // подзадачи
+    m.querySelectorAll(".sub-row[data-sid]").forEach(row => {
+      const s = o.subtasks.find(x => x.id === row.dataset.sid);
+      row.querySelector('[data-s="toggle"]').onclick = () => { s.done = !s.done; commit(true); };
+      row.querySelector('[data-s="text"]').onchange = e => { s.text = e.target.value.trim(); if (!s.text) o.subtasks = o.subtasks.filter(x => x !== s); commit(!s.text); };
+      row.querySelector('[data-s="del"]').onclick = () => { o.subtasks = o.subtasks.filter(x => x !== s); commit(true); };
+    });
+    const ni = m.querySelector('[data-s="new"]');
+    ni.onkeydown = e => {
+      if (e.key !== "Enter" || !ni.value.trim()) return;
+      e.preventDefault();
+      const text = ni.value.trim();
+      ni.value = "";
+      o.subtasks.push({ id: uid(), text, done: false });
+      commit(true);
+      $('#modalBody [data-s="new"]')?.focus();
+    };
+    ni.onblur = () => { if (ni.value.trim()) { o.subtasks.push({ id: uid(), text: ni.value.trim(), done: false }); ni.value = ""; commit(true); } };
     m.querySelector('[data-a="repeat"]').onclick = () => { closeModal(); OrdersView.repeat(o); };
     m.querySelector('[data-a="ics"]').onclick = () => {
       if (!o.deadline) return toast("Нет дедлайна", "Сначала укажите срок сдачи", "warn", "cal");

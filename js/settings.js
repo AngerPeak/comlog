@@ -31,6 +31,9 @@ const SettingsView = {
             ${row("Цель на месяц, ₽", s.showGame ? `За выполнение: +${fmt(ECON.goalXP)} XP и +${ECON.goalMatter} ◆` : "", `<input class="field" id="sGoal" value="${fmt(s.monthlyGoal)}" inputmode="numeric">`)}
             ${row("Налог самозанятого", "Покажет сумму налога и «на руки»", tog("sTax", s.taxEnabled))}
             ${s.taxEnabled ? row("Ставка налога, %", "4% — с физлиц, 6% — с компаний и ИП", `<input class="field short" id="sTaxRate" value="${s.taxRate}" inputmode="decimal">`) : ""}
+            ${row("Почасовая оплата для всех заказов", "У всех невыполненных заказов появится кнопка «Начать», новые заказы без цены сразу почасовые. Готовые заказы и архив не меняются", tog("sHourlyAll", s.hourlyAll))}
+            ${row("Ставка за час, ₽", "Включить почасовую можно и у одного заказа — в его карточке (⋯). Ставку у заказа можно поменять", `<input class="field" id="sRate" value="${fmt(s.hourlyRate)}" inputmode="numeric">`)}
+            ${row("Округлять время", "Оплачиваемое время округляется вверх", `<select class="field" id="sRound">${[[1, "до минуты"], [5, "до 5 минут"], [10, "до 10 минут"], [15, "до 15 минут"], [30, "до получаса"], [60, "до часа"]].map(([v, l]) => `<option value="${v}" ${s.timeRound === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
             ${row("Отмена удаления", "Вместо вопроса «Удалить?» — кнопка «Отменить» на 7 секунд", tog("sUndo", s.undoDelete))}
           </div>
 
@@ -100,6 +103,10 @@ const SettingsView = {
     $("#sGoal").onchange = e => { s.monthlyGoal = parseMoney(e.target.value); e.target.value = fmt(s.monthlyGoal); Store.commit("settings"); };
     $("#sTax").onclick = () => set("taxEnabled", !s.taxEnabled);
     $("#sTaxRate")?.addEventListener("change", e => { const v = Math.max(0, Math.min(50, parseFloat(e.target.value.replace(",", ".")) || 0)); set("taxRate", v); });
+    $("#sRate").onfocus = e => { e.target.value = String(s.hourlyRate); };
+    $("#sRate").onchange = e => { s.hourlyRate = parseMoney(e.target.value); e.target.value = fmt(s.hourlyRate); Store.commit("settings"); };
+    $("#sHourlyAll").onclick = () => set("hourlyAll", !s.hourlyAll);
+    $("#sRound").onchange = e => { s.timeRound = +e.target.value; Store.commit("settings"); };
     $("#sUndo").onclick = () => set("undoDelete", !s.undoDelete);
     $("#sGame").onclick = () => { set("showGame", !s.showGame); evaluateGame(true); renderChrome(); };
     $("#sGameNotify")?.addEventListener("click", () => set("gameNotify", !s.gameNotify));

@@ -19,6 +19,10 @@ function defaultSettings() {
     taxEnabled: false,
     taxRate: 6,
     undoDelete: true,
+    hourlyRate: 1000,
+    hourlyAll: false,           // почасовая оплата для всех новых и невыполненных заказов
+    timeRound: 1,               // округление времени вверх, минут
+
     showGame: true,
     gameNotify: true,
     theme: "dark",
@@ -88,6 +92,12 @@ function normalizeOrder(o) {
     paidDate: o.paidDate || null,
     deadline: o.deadline || null,
     remind: o.remind !== false,
+    // почасовая оплата: прайс = оплачиваемые часы × ставка
+    hourly: !!o.hourly,
+    rate: Math.max(0, Math.round(+o.rate || 0)),
+    timeMs: Math.max(0, Math.round(+o.timeMs || 0)),
+    timerStart: o.timerStart || null,
+    subtasks: Array.isArray(o.subtasks) ? o.subtasks.filter(s => s && s.text).map(s => ({ id: s.id || uid(), text: String(s.text), done: !!s.done })) : [],
     createdAt: o.createdAt || Date.now(),
     updatedAt: o.updatedAt || o.createdAt || 0,
     ...(o.imported ? { imported: true } : {}),
@@ -162,6 +172,29 @@ function setPrice(o, price) {
   if (wasPaid) setReceived(o, o.price); else recalcOrder(o);
 }
 function debtOf(o) { return Math.max(0, o.price - o.received); }
+
+/* ----- почасовая оплата и таймер ----- */
+function timerElapsed(o) { return o.timeMs + (o.timerStart ? Math.max(0, Date.now() - o.timerStart) : 0); }
+function billedMinutes(ms) { const r = Math.max(1, Store.settings.timeRound || 1); return Math.ceil(ms / 60000 / r - 1e-9) * r; }
+function hourlyPrice(o, ms = timerElapsed(o)) { return Math.round(billedMinutes(ms) / 60 * o.rate); }
+function startTimer(o) {
+  if (!o.hourly) { o.hourly = true; o.rate = o.rate || Store.settings.hourlyRate; }
+  if (!o.timerStart) o.timerStart = Date.now();
+}
+function stopTimer(o) {
+  if (o.timerStart) { o.timeMs += Math.max(0, Date.now() - o.timerStart); o.timerStart = null; }
+  setPrice(o, hourlyPrice(o));
+}
+function setWorkTime(o, ms) {
+  o.timeMs = Math.max(0, Math.round(ms));
+  if (o.timerStart) o.timerStart = Date.now();
+  setPrice(o, hourlyPrice(o));
+}
+function fmtDur(ms, clock = false) {
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (clock) return `${h}:${pad(m)}:${pad(s % 60)}`;
+  return h ? `${h} ч${m ? ` ${m} мин` : ""}` : `${m} мин`;
+}
 
 /* ----- IndexedDB для веб-версии ----- */
 const IDB = {

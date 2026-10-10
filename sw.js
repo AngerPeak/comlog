@@ -1,5 +1,5 @@
 /* Офлайн-режим веб-версии: сначала сеть (чтобы обновления приходили сразу), без сети — кэш. */
-const CACHE = "comlog-v2";
+const CACHE = "comlog-v5";
 const CORE = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
   "fonts/inter-latin.woff2", "fonts/inter-latin-ext.woff2", "fonts/inter-cyrillic.woff2",
