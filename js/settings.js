@@ -64,6 +64,8 @@ const SettingsView = {
 
           <div class="card" id="syncBox"></div>
 
+          <div class="card" id="updBox"></div>
+
           <div class="card">
             <h3>${icon("download")}Резервная копия</h3>
             <div class="muted" style="margin:-6px 0 14px;font-size:13px">Файл .comlog содержит все заказы, прайс-лист, персонажа и достижения.</div>
@@ -81,6 +83,7 @@ const SettingsView = {
       </div>`;
     this.bind();
     this.renderSync();
+    this.renderUpdates();
     this.renderAutoList();
   },
 
@@ -148,6 +151,22 @@ const SettingsView = {
         toast("Данные восстановлены", b.closest(".auto-item").firstElementChild.textContent);
       });
     } catch (e) { console.error(e); box.innerHTML = `<div class="muted">Не удалось прочитать список</div>`; }
+  },
+
+  renderUpdates() {
+    const box = $("#updBox");
+    if (!box) return;
+    if (!Updater.supported) {
+      box.innerHTML = `<h3>${icon("download")}Версия</h3><div class="muted" style="font-size:13px">COMLOG ${APP_VERSION}. Новая версия для ПК — новый COMLOG.exe; данные сохраняются.</div>`;
+      return;
+    }
+    const auto = Store.local.autoUpdate !== false, newer = Updater.latest && Updater.latest !== APP_VERSION;
+    box.innerHTML = `
+      <h3>${icon("download")}Обновления<span class="sub">${newer ? `<span class="lime">доступна ${Updater.latest}</span>` : "версия " + APP_VERSION}</span></h3>
+      <div class="set-row"><div class="sr-l"><div>Обновлять автоматически</div><div>Новая версия ставится сама при открытии приложения</div></div><button class="toggle ${auto ? "on" : ""}" id="upAuto"></button></div>
+      <div class="set-row"><div class="sr-l"><div>Установлена версия ${APP_VERSION}</div><div>Данные при обновлении не теряются</div></div><button class="btn sm primary" id="upCheck">${icon("download")} Проверить</button></div>`;
+    $("#upAuto").onclick = async () => { Store.local.autoUpdate = !auto; await Store.saveLocal(); this.renderUpdates(); };
+    $("#upCheck").onclick = () => Updater.check(true);
   },
 
   renderSync() {

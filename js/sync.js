@@ -149,6 +149,7 @@ const Sync = {
       if (mj !== canon(Store.state)) Store.applyMerged(merged);
       if (mj !== canon(remote)) await this.push(c, merged);
       cfg.last = Date.now(); cfg.error = null; this.status = "";
+      if (reason === "manual") toast("Синхронизировано", new Date(cfg.last).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }), "ok", "sync");
     } catch (e) {
       console.error(e);
       cfg.error = e.message || String(e); this.status = "";

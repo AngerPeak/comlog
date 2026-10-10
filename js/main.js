@@ -130,7 +130,7 @@ async function boot() {
     if (!e.target.closest("#moreSheet, #moreBtn")) $("#moreSheet").hidden = true;
   });
   $("#bellBtn").onclick = () => { renderBell(); $("#bellPop").hidden = !$("#bellPop").hidden; };
-  $("#syncBadge").onclick = () => showTab("settings");
+  $("#syncBadge").onclick = () => Sync.run("manual");
   $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !AC.isOpen()) { if (!$("#modal").hidden) closeModal(); $("#bellPop").hidden = true; }
@@ -149,10 +149,53 @@ async function boot() {
   Sync.start();
 
   // офлайн-режим и установка на экран «Домой» — только для веб-версии
-  if (!Store.native && "serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-    navigator.serviceWorker.register("sw.js").catch(e => console.warn("SW", e));
-    navigator.storage?.persist?.();
-  }
+  Updater.init();
 }
+
+/* ---------- обновления веб-версии (iPhone) ---------- */
+const Updater = {
+  reg: null, latest: null, reloading: false,
+  get supported() { return !Store.native && "serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost"); },
+  async init() {
+    if (!this.supported) return;
+    navigator.storage?.persist?.();
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController) { hadController = true; return; }   // первая установка — не перезагружаем
+      this.onUpdated();
+    });
+    try { this.reg = await navigator.serviceWorker.register("sw.js"); } catch (e) { console.warn("SW", e); }
+    this.check(false);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") this.check(false); });
+    setInterval(() => this.check(false), 30 * 60 * 1000);
+  },
+  async remoteVersion() {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    return (await r.json()).version;
+  },
+  /** Сравнить версию на сайте с установленной; если новее — скачать (SW ставится сам и перезагружает страницу). */
+  async check(manual) {
+    if (!this.supported) return;
+    try {
+      this.latest = await this.remoteVersion();
+      if (currentTab === "settings") SettingsView.renderUpdates?.();
+      if (this.latest === APP_VERSION) { if (manual) toast("Установлена последняя версия", APP_VERSION, "ok", "check"); return; }
+      if (manual) toast("Найдена новая версия", `${this.latest} — загружаю…`, "ok", "download");
+      await this.reg?.update();
+      if (manual) setTimeout(() => {
+        if (!this.reloading) toast("Обновление ещё в пути", "GitHub раздаёт новую версию до 10 минут — проверьте чуть позже", "warn", "clock");
+      }, 20000);
+    } catch (e) {
+      if (manual) toast("Не удалось проверить обновления", "Нет связи с сайтом", "err", "x");
+    }
+  },
+  onUpdated() {
+    const auto = Store.local.autoUpdate !== false;
+    const busy = (document.activeElement && document.activeElement.matches("input, textarea")) || !$("#modal").hidden;
+    if (auto && !busy) return this.reload();
+    toast("Вышла новая версия COMLOG", "Перезапустите, чтобы применить", "ok", "download", { label: "Обновить", run: () => this.reload() });
+  },
+  async reload() { this.reloading = true; await Store.save(true); location.reload(); },
+};
 
 boot();

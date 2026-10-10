@@ -149,7 +149,7 @@ const OrdersView = {
         <button class="mini-ico ${o.remind ? "bell-on" : ""}" data-act="remind" title="${o.remind ? "Напоминание включено" : "Напоминание выключено"}">${icon("bell")}</button>
         <button class="mini-ico" data-act="edit" title="Подробнее: оплаты, дата">${icon("dots")}</button>
         <button class="mini-ico del" data-act="del" title="Удалить заказ">${icon("trash")}</button>
-      </div></td></tr>${this.expanded.has(o.id) ? `<tr class="sub-tr" data-sub-of="${o.id}"><td></td><td colspan="8">${subListHTML(o)}</td></tr>` : ""}`;
+      </div></td></tr>${this.expanded.has(o.id) ? `<tr class="sub-tr" data-sub-of="${o.id}"><td colspan="2"></td><td colspan="7">${subListHTML(o)}</td></tr>` : ""}`;
   },
   expanded: new Set(),   // у каких заказов раскрыт список подзадач
 
