@@ -143,6 +143,8 @@ function chronicleHTML() {
       <div class="ch-ico">${icon("book")}</div>
       <div><div style="font-size:22px;font-weight:750">Летопись</div>
         <div class="muted">Рекорды за всю историю, включая перенесённый архив. Наград не дают — это просто ваша история.</div></div>
+      <div class="spacer"></div>
+      <div class="wr-launch">${wrappedYears().slice(0, 4).map((y, i) => `<button class="btn ${i ? "" : "primary"}" data-wrapped="${y}">${icon("star")} Итоги ${y}</button>`).join("")}</div>
     </div>
     <div class="chron-grid">${cards.map(([ic, t, v, s]) => `<div class="chron"><div class="c-ico">${icon(ic)}</div>
       <div class="c-main"><div class="c-t">${t}</div><div class="c-v">${esc(v)}</div><div class="c-s">${esc(s)}</div></div></div>`).join("")}</div>

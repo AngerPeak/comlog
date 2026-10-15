@@ -16,7 +16,8 @@ async function streamBytes(bytes, stream) {
 
 /** Стабильная строка состояния: ключи и записи отсортированы, чтобы сравнение не зависело от порядка. */
 function canon(state) {
-  const s = { ...state, orders: [...state.orders].sort((x, y) => (x.id < y.id ? -1 : 1)), templates: [...state.templates].sort((x, y) => (x.id < y.id ? -1 : 1)) };
+  const byId = arr => [...arr].sort((x, y) => (x.id < y.id ? -1 : 1));
+  const s = { ...state, orders: byId(state.orders), templates: byId(state.templates), goals: byId(state.goals || []) };
   return JSON.stringify(s, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(key => [key, v[key]])) : v));
 }
 
@@ -24,7 +25,7 @@ function mergeStates(a, b) {
   const pickNewer = (x, y) => (!x ? y : !y ? x : (y.updatedAt || 0) > (x.updatedAt || 0) ? y : x);
   const out = normalizeState({});
   out.createdAt = [a.createdAt, b.createdAt].sort()[0];
-  for (const kind of ["orders", "templates"]) {
+  for (const kind of ["orders", "templates", "goals"]) {
     const del = { ...a.deleted[kind] };
     for (const [id, ts] of Object.entries(b.deleted[kind])) del[id] = Math.max(del[id] || 0, ts);
     const m = new Map();
@@ -34,8 +35,10 @@ function mergeStates(a, b) {
     for (const x of out[kind]) delete del[x.id];
     out.deleted[kind] = del;
   }
-  out.services = { ...a.services };
-  for (const [k, v] of Object.entries(b.services)) out.services[k] = pickNewer(out.services[k], v);
+  for (const map of ["services", "clients"]) {
+    out[map] = { ...a[map] };
+    for (const [k, v] of Object.entries(b[map])) out[map][k] = pickNewer(out[map][k], v);
+  }
   const bSet = (b.settingsUpdatedAt || 0) > (a.settingsUpdatedAt || 0);
   out.settings = bSet ? b.settings : a.settings;
   out.settingsUpdatedAt = Math.max(a.settingsUpdatedAt || 0, b.settingsUpdatedAt || 0);

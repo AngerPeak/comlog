@@ -13,9 +13,9 @@ const PriceListView = {
           ${tpls.map(t => {
             const c = serviceColor(t.service) || Store.state.services[serviceKey(t.service)]?.color || "";
             return `<div class="tpl-card" data-id="${t.id}" style="${c ? `--svc:${c}` : ""}">
-              <div class="tc-top"><i class="dot" style="background:${c || "var(--line-2)"}"></i><b>${esc(t.service || "Без названия")}</b></div>
+              <div class="tc-top"><i class="dot" style="background:${c || "var(--line-2)"}"></i><b>${t.qty > 1 ? `${t.qty} × ` : ""}${esc(t.service || "Без названия")}</b>${t.qty > 1 ? `<span class="tag lime">пакет</span>` : ""}</div>
               <div class="tc-price">${money(t.price)}</div>
-              <div class="tc-sub">${t.client ? esc(t.client) : "любой клиент"}</div>
+              <div class="tc-sub">${t.qty > 1 ? `${money(Math.round(t.price / t.qty))} за штуку · ` : ""}${t.client ? esc(t.client) : "любой клиент"}</div>
               <div class="tc-acts">
                 <button class="btn sm primary" data-a="add" title="Добавить заказ в текущий месяц">${icon("plus")} В заказы</button>
                 <button class="mini-ico" data-a="edit" title="Изменить">${icon("edit")}</button>
@@ -38,7 +38,11 @@ const PriceListView = {
     $("#tplNew").onclick = () => this.editTemplate();
     $$("#page-pricelist .tpl-card[data-id]").forEach(card => card.onclick = e => {
       const t = tpls.find(x => x.id === card.dataset.id), a = e.target.closest("[data-a]")?.dataset.a;
-      if (a === "add") { showTab("orders"); OrdersView.add({ client: t.client, service: t.service, price: t.price }); }
+      if (a === "add") {
+        showTab("orders");
+        if (t.qty > 1) OrdersView.addMany({ client: t.client, service: t.service, date: OrdersView.newDate() }, t.qty, packagePrices(t.price, t.qty));
+        else OrdersView.add({ client: t.client, service: t.service, price: t.price });
+      }
       else if (a === "del") this.deleteTemplate(t);
       else this.editTemplate(t);
     });
@@ -105,11 +109,13 @@ const PriceListView = {
 
   editTemplate(t = null) {
     const isNew = !t;
-    t = t || { service: "", price: 0, client: "" };
+    t = t || { service: "", price: 0, client: "", qty: 1 };
     const m = openModal(`<h3>${isNew ? "Новый шаблон" : "Шаблон"}</h3><p>Выбирайте его в поле «Услуга» — цена подставится автоматически.</p>
       <div class="form-grid">
         <label>Услуга<input class="field" data-f="service" data-ac="service" value="${esc(t.service)}" autocomplete="off"></label>
-        <label>Цена, ₽<input class="field" data-f="price" inputmode="numeric" value="${t.price ? fmt(t.price) : ""}"></label>
+        <label>Цена, ₽ <small class="muted">за весь пакет</small><input class="field" data-f="price" inputmode="numeric" value="${t.price ? fmt(t.price) : ""}"></label>
+        <label>Штук в пакете <small class="muted">1 — обычный шаблон</small><input class="field" data-f="qty" type="number" min="1" max="99" value="${t.qty || 1}"></label>
+        <div class="muted small pkg-hint" id="pkgHint"></div>
         <label class="span2">Клиент <small class="muted">необязательно — тогда цена только для него</small><input class="field" data-f="client" data-ac="client" value="${esc(t.client)}" autocomplete="off"></label>
       </div>
       <div class="m-actions"><button class="btn" data-r="0">Отмена</button><button class="btn primary" data-r="1">Сохранить</button></div>`);
@@ -118,10 +124,12 @@ const PriceListView = {
       const pi = m.querySelector('[data-f="price"]');
       if (!parseMoney(pi.value)) { const p = suggestPrice(val("client"), val("service")); if (p) pi.value = fmt(p); }
     });
+    const hint = () => { const q = parseInt(val("qty")) || 1, p = parseMoney(val("price")); $("#pkgHint").textContent = q > 1 && p ? `Создаст ${q} заказов по ${money(Math.round(p / q))}` : ""; };
+    m.querySelectorAll('[data-f="qty"], [data-f="price"]').forEach(i => i.addEventListener("input", hint)); hint();
     m.querySelector('[data-r="0"]').onclick = closeModal;
     m.querySelector('[data-r="1"]').onclick = () => {
       if (!val("service")) return toast("Укажите услугу", "", "warn", "edit");
-      const data = { service: val("service"), price: parseMoney(val("price")), client: val("client") };
+      const data = { service: val("service"), price: parseMoney(val("price")), client: val("client"), qty: Math.max(1, Math.min(99, parseInt(val("qty")) || 1)) };
       if (isNew) Store.state.templates.push(normalizeTemplate(data)); else Object.assign(t, data);
       closeModal(); Store.commit("templates"); this.render();
     };

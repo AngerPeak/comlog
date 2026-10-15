@@ -137,9 +137,12 @@ const ClientsView = {
           <div class="avatar-l" style="background:${avaColor(name)}">${esc(initials(name))}</div>
           <div style="min-width:0"><h2>${esc(name)}</h2><div class="muted">клиент с ${first ? monthTitle(monthKey(first)) : "—"} · всего ${allOrders.length} ${plural(allOrders.length, "заказ", "заказа", "заказов")}</div></div>
           <div class="spacer"></div>
+          ${feat("estimates") ? `<button class="btn sm" id="cEst">${icon("receipt")} Смета</button>` : ""}
           <button class="btn sm" id="cMerge">${icon("merge")} Объединить</button>
           <button class="btn sm" id="cRename">${icon("edit")} Переименовать</button>
         </div>
+        ${feat("contacts") ? `<div class="contact-row">${icon("send")}<input class="field" id="cContact" value="${esc(Store.state.clients[name]?.contact || "")}" placeholder="Контакт: @telegram, ссылка или телефон — появится кнопка «Написать»" autocomplete="off">
+          ${clientContact(name) ? `<a class="btn sm primary" href="${esc(clientContact(name))}" target="_blank" rel="noopener">${icon("send")} Написать</a>` : ""}</div>` : ""}
         <div class="period" id="cPeriod"></div>
       </div>
       <div class="kpis" id="cKpis"></div>
@@ -147,6 +150,14 @@ const ClientsView = {
       <div class="card" style="margin-top:16px"><h3>${icon("list")}Заказы за период<span class="sub" id="cCount"></span></h3><div id="cTable" class="table-scroll"></div></div>`;
     $("#cRename").onclick = () => this.rename(name);
     $("#cMerge").onclick = () => this.mergeInto(name);
+    $("#cEst")?.addEventListener("click", () => EstimatesView.openFor(name));
+    $("#cContact")?.addEventListener("change", e => {
+      const v = e.target.value.trim();
+      if (v && !contactUrl(v)) toast("Не похоже на контакт", "Например: @nickname, t.me/nickname или +7 900 000-00-00", "warn", "send");
+      clientMeta(name).contact = v;
+      Store.commit("clients");
+      this.renderDetail();
+    });
     renderPeriodPicker($("#cPeriod"), this.period, () => this.renderDetail());
 
     const r = resolvePeriod(this.period);
@@ -156,7 +167,9 @@ const ClientsView = {
       <div class="card kpi hero-kpi"><div class="k-label">${icon("coin")}Получено</div><div class="k-val">${fmt(s.received)}<small>₽</small></div></div>
       <div class="card kpi"><div class="k-label">${icon("clock")}Долг</div><div class="k-val ${s.debt ? "red" : ""}">${fmt(s.debt)}<small>₽</small></div></div>
       <div class="card kpi"><div class="k-label">${icon("list")}Заказов</div><div class="k-val">${s.count}</div></div>
-      <div class="card kpi"><div class="k-label">${icon("bolt")}Средний чек</div><div class="k-val">${fmt(s.avg)}<small>₽</small></div></div>`;
+      <div class="card kpi"><div class="k-label">${icon("bolt")}Средний чек</div><div class="k-val">${fmt(s.avg)}<small>₽</small></div></div>
+      ${(() => { const d = paymentDelays(name); if (!d.length) return ""; const avg = d.reduce((a, x) => a + x.days, 0) / d.length;
+        return `<div class="card kpi"><div class="k-label">${icon("clock")}Платит через</div><div class="k-val">${avg < 1 ? "сразу" : `${Math.round(avg)}<small>${plural(Math.round(avg), "день", "дня", "дней")}</small>`}</div><div class="k-foot">в среднем после сдачи · ${d.length} ${plural(d.length, "заказ", "заказа", "заказов")}</div></div>`; })()}`;
     $("#cRange").textContent = periodLabel(r);
     drawLineChart($("#cChart"), buildSeries(s.entries, s.list, r.from, r.to, autoGrouping(r.from, r.to)), { cumulative: true });
     $("#cCount").textContent = `${list.length} шт.`;

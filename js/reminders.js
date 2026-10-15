@@ -8,19 +8,45 @@ function activeReminders() {
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
 }
 
+/** Долги: работа сдана, а оплаты нет дольше N дней (настройка). Группируем по клиенту. */
+function debtReminders(all = false) {
+  if (!feat("debts")) return [];
+  const t = todayISO(), N = Store.settings.debtDays || 14, m = new Map();
+  for (const o of Store.orders) {
+    if (!o.done || debtOf(o) <= 0) continue;
+    const since = o.doneDate || (o.dateUnknown ? monthEnd(monthKey(o.date)) : o.date);
+    const c = o.client.trim() || "Без имени";
+    const x = m.get(c) || { client: c, sum: 0, count: 0, oldest: since };
+    x.sum += debtOf(o); x.count++;
+    if (since < x.oldest) x.oldest = since;
+    m.set(c, x);
+  }
+  for (const x of m.values()) { x.age = daysBetween(x.oldest, t); x.due = addDays(x.oldest, N); }
+  return [...m.values()].filter(x => all || x.age >= N).sort((a, b) => b.sum - a.sum);
+}
+function debtText(x) { return `${money(x.sum)} · ${x.count} ${plural(x.count, "работа", "работы", "работ")} · ждёт ${x.age} ${plural(x.age, "день", "дня", "дней")}`; }
+
 function reminderText(o) {
   const d = daysBetween(todayISO(), o.deadline);
   return d < 0 ? `просрочен на ${-d} ${plural(-d, "день", "дня", "дней")}` : d === 0 ? "сдать сегодня" : d === 1 ? "сдать завтра" : `осталось ${d} ${plural(d, "день", "дня", "дней")}`;
 }
 
 function renderBell() {
-  const list = activeReminders();
-  $("#bellDot").hidden = !list.length;
-  $("#bellPop").innerHTML = `<h4>Напоминания</h4>` + (list.length ? list.map(o => `
+  const list = activeReminders(), debts = debtReminders();
+  $("#bellDot").hidden = !list.length && !debts.length;
+  $("#bellPop").innerHTML = `<h4>Сроки</h4>` + (list.length ? list.map(o => `
     <div class="bell-item" data-go="${o.id}"><span class="date-chip">${shortDate(o.deadline)}</span>
-      <div class="bi-main"><div class="bi-title">${esc(o.client || "Без имени")} · ${esc(o.service || "—")}</div><div class="bi-sub">${reminderText(o)}</div></div>${deadlineBadge(o)}</div>`).join("")
-    : `<div class="bell-empty">Горящих сроков нет 👌</div>`);
+      <div class="bi-main"><div class="bi-title">${esc(o.client || "Без имени")} · ${esc(o.service || "—")}</div><div class="bi-sub">${reminderText(o)}${o.deadlineTime ? ` до ${o.deadlineTime}` : ""}</div></div>${deadlineBadge(o)}</div>`).join("")
+    : `<div class="bell-empty">Горящих сроков нет 👌</div>`)
+    + (debts.length ? `<h4 style="margin-top:12px">Долги</h4>` + debts.map(x => `
+    <div class="bell-item" data-debt="${esc(x.client)}"><span class="date-chip red-chip">${icon("coin")}</span>
+      <div class="bi-main"><div class="bi-title">${esc(x.client)}</div><div class="bi-sub">${debtText(x)}</div></div></div>`).join("") : "");
   $$("#bellPop [data-go]").forEach(el => el.onclick = () => { $("#bellPop").hidden = true; OrdersView.goTo(el.dataset.go); });
+  $$("#bellPop [data-debt]").forEach(el => el.onclick = () => {
+    $("#bellPop").hidden = true;
+    if (feat("estimates")) { EstimatesView.onlyUnpaid = true; EstimatesView.preset = "custom"; EstimatesView.from = debtReminders(true).find(x => x.client === el.dataset.debt)?.oldest || ""; EstimatesView.to = todayISO(); EstimatesView.month = monthKey(todayISO()); EstimatesView.openFor(el.dataset.debt); }
+    else ClientsView.open(el.dataset.debt);
+  });
 }
 
 /** При открытии приложения: подсказки внутри окна, не чаще раза в день на заказ. */
@@ -35,6 +61,19 @@ function checkReminders() {
   Store.save();
   fresh.slice(0, 3).forEach(o => toast(`${o.client || "Без имени"}: ${reminderText(o)}`, o.service || "", "warn", "bell"));
   if (fresh.length > 3) toast(`И ещё ${fresh.length - 3} ${plural(fresh.length - 3, "срок", "срока", "сроков")}`, "Список — под колокольчиком", "warn", "bell");
+}
+
+/** Долги — раз в день на клиента: подсказка в приложении и (на ПК) уведомление Windows. */
+function checkDebtReminders() {
+  const t = todayISO(), g = Store.game;
+  const fresh = debtReminders().filter(x => g.notified["debt:" + x.client] !== t);
+  if (!fresh.length) return;
+  fresh.forEach(x => g.notified["debt:" + x.client] = t);
+  Store.save();
+  fresh.slice(0, 3).forEach(x => toast(`${x.client} должен ${money(x.sum)}`, debtText(x), "warn", "coin"));
+  const api = Store.api();
+  if (api && Store.settings.winReminders) api.notify(fresh.length === 1 ? `COMLOG: ${fresh[0].client} должен ${money(fresh[0].sum)}` : `COMLOG: долги у ${fresh.length} клиентов`,
+    fresh.slice(0, 4).map(x => `${x.client} — ${debtText(x)}`).join("\n"));
 }
 
 /** Моменты уведомлений: за день до дедлайна в выбранные часы. */
@@ -59,6 +98,10 @@ function scheduleWindowsReminders() {
         });
       }
     }
+  }
+  if (Store.settings.winReminders) for (const x of debtReminders(true)) {
+    if (x.age >= (Store.settings.debtDays || 14)) continue;
+    items.push({ at: `${x.due}T12:00`, title: `${x.client} пока не оплатил работу`, body: `${money(x.sum)} · ${x.count} ${plural(x.count, "работа", "работы", "работ")} ждут оплаты уже ${Store.settings.debtDays} дней` });
   }
   items.sort((a, b) => a.at.localeCompare(b.at));
   const json = JSON.stringify(items.slice(0, 120));

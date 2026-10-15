@@ -12,11 +12,21 @@ const SettingsView = {
       <div class="settings-grid">
         <div class="grid">
           <div class="card">
+            <h3>${icon("sliders")}Функции<span class="sub">лишнее можно выключить</span></h3>
+            <div class="row wrap" style="margin:-4px 0 6px">
+              <button class="btn sm" id="fSimple">Простой режим</button><button class="btn sm" id="fAll">Включить всё</button>
+              ${api || !isMobile() ? `<div class="spacer"></div><button class="btn sm ghost" id="fKeys">${icon("keyboard")} Горячие клавиши</button>` : ""}
+            </div>
+            ${FEATURES.map(([k, l, d]) => row(l, d, `<button class="toggle ${feat(k) ? "on" : ""}" data-feat="${k}"></button>`)).join("")}
+          </div>
+
+          <div class="card">
             <h3>${icon("palette")}Оформление</h3>
             ${row("Тема", "", `<div class="seg" id="sTheme">${THEMES.map(([k, l]) => `<button data-v="${k}" class="${s.theme === k ? "on" : ""}">${l}</button>`).join("")}</div>`)}
             ${row("Акцентный цвет", "", `<div class="swatches" id="sAccent">${ACCENTS.map(([c, n]) => `<button class="sw ${s.accent === c ? "on" : ""}" data-c="${c}" title="${n}" style="background:${c}"></button>`).join("")}
               <label class="sw custom ${ACCENTS.some(a => a[0] === s.accent) ? "" : "on"}" title="Свой цвет" style="${ACCENTS.some(a => a[0] === s.accent) ? "" : `background:${s.accent}`}"><input type="color" id="sAccentCustom" value="${s.accent}">${icon("edit")}</label></div>`)}
-            ${row("Вид заказов на ПК", "На телефоне всегда карточки", `<div class="seg" id="sView"><button data-v="table" class="${s.ordersView === "table" ? "on" : ""}">Таблица</button><button data-v="board" class="${s.ordersView === "board" ? "on" : ""}">Доска</button></div>`)}
+            ${row("Вид заказов на ПК", "На телефоне — карточки" + (feat("calendar") ? " или календарь" : ""), `<div class="seg" id="sView"><button data-v="table" class="${s.ordersView === "table" ? "on" : ""}">Таблица</button><button data-v="board" class="${s.ordersView === "board" ? "on" : ""}">Доска</button>${feat("calendar") ? `<button data-v="calendar" class="${s.ordersView === "calendar" ? "on" : ""}">Календарь</button>` : ""}</div>`)}
+            ${row("Компактные строки", "Больше заказов на экране", tog("sDense", s.density === "compact"))}
             ${row("Цветные столбцы", "Мягкая подсветка столбцов таблицы", tog("sCols", s.colorColumns))}
             <div class="col-colors" ${s.colorColumns ? "" : "hidden"}>${Object.entries(COLUMN_NAMES).map(([k, n]) => `
               <button class="col-chip" data-col="${k}"><i style="background:${s.columnColors[k]}"></i>${n}</button>`).join("")}
@@ -31,9 +41,9 @@ const SettingsView = {
             ${row("Цель на месяц, ₽", s.showGame ? `За выполнение: +${fmt(ECON.goalXP)} XP и +${ECON.goalMatter} ◆` : "", `<input class="field" id="sGoal" value="${fmt(s.monthlyGoal)}" inputmode="numeric">`)}
             ${row("Налог самозанятого", "Покажет сумму налога и «на руки»", tog("sTax", s.taxEnabled))}
             ${s.taxEnabled ? row("Ставка налога, %", "4% — с физлиц, 6% — с компаний и ИП", `<input class="field short" id="sTaxRate" value="${s.taxRate}" inputmode="decimal">`) : ""}
-            ${row("Почасовая оплата для всех заказов", "У всех невыполненных заказов появится кнопка «Начать», новые заказы без цены сразу почасовые. Готовые заказы и архив не меняются", tog("sHourlyAll", s.hourlyAll))}
+            ${feat("hourly") ? `${row("Почасовая оплата для всех заказов", "У всех невыполненных заказов появится кнопка «Начать», новые заказы без цены сразу почасовые. Готовые заказы и архив не меняются", tog("sHourlyAll", s.hourlyAll))}
             ${row("Ставка за час, ₽", "Включить почасовую можно и у одного заказа — в его карточке (⋯). Ставку у заказа можно поменять", `<input class="field" id="sRate" value="${fmt(s.hourlyRate)}" inputmode="numeric">`)}
-            ${row("Округлять время", "Оплачиваемое время округляется вверх", `<select class="field" id="sRound">${[[1, "до минуты"], [5, "до 5 минут"], [10, "до 10 минут"], [15, "до 15 минут"], [30, "до получаса"], [60, "до часа"]].map(([v, l]) => `<option value="${v}" ${s.timeRound === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+            ${row("Округлять время", "Оплачиваемое время округляется вверх", `<select class="field" id="sRound">${[[1, "до минуты"], [5, "до 5 минут"], [10, "до 10 минут"], [15, "до 15 минут"], [30, "до получаса"], [60, "до часа"]].map(([v, l]) => `<option value="${v}" ${s.timeRound === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}` : ""}
             ${row("Отмена удаления", "Вместо вопроса «Удалить?» — кнопка «Отменить» на 7 секунд", tog("sUndo", s.undoDelete))}
           </div>
 
@@ -54,6 +64,7 @@ const SettingsView = {
             ${row("Подсвечивать сроки", "За сколько дней до дедлайна предупреждать в приложении", `<select class="field" id="sRemind">${[1, 2, 3, 5, 7].map(d => `<option value="${d}" ${d === s.remindDays ? "selected" : ""}>за ${d} ${plural(d, "день", "дня", "дней")}</option>`).join("")}</select>`)}
             ${row("Уведомления накануне", "За день до дедлайна, в выбранные часы", `<div class="seg" id="sRemCount"><button data-v="2" class="${s.reminderCount === 2 ? "on" : ""}">2 раза</button><button data-v="3" class="${s.reminderCount === 3 ? "on" : ""}">3 раза</button></div>`)}
             <div class="times">${s.reminderTimes.slice(0, s.reminderCount).map((t, i) => `<input type="time" class="field" data-time="${i}" value="${t}">`).join("")}</div>
+            ${feat("debts") ? row("Напоминать о долгах", "Если работа сдана, а оплаты нет столько дней", `<select class="field" id="sDebt">${[3, 7, 10, 14, 21, 30].map(d => `<option value="${d}" ${d === s.debtDays ? "selected" : ""}>через ${d} ${plural(d, "день", "дня", "дней")}</option>`).join("")}</select>`) : ""}
             ${api ? row("Уведомления Windows", "Появляются в углу экрана, даже если COMLOG закрыт", tog("sWin", s.winReminders))
                   : `<div class="hint">${icon("info")}<div>На iPhone веб-приложение не умеет присылать уведомления само. Добавьте дедлайны в Календарь — iOS напомнит в эти же часы.</div></div>`}
             <div class="row wrap" style="margin-top:10px">
@@ -72,7 +83,8 @@ const SettingsView = {
             <div class="backup-actions">
               <button class="btn primary" id="bExport">${icon("download")} Сохранить бэкап в файл…</button>
               <button class="btn" id="bImport">${icon("upload")} Восстановить из бэкапа…</button>
-              <button class="btn" id="bCsv">${icon("table")} Экспорт заказов в CSV (Excel)</button>
+              <button class="btn" id="bXls">${icon("upload")} Импорт заказов из Excel / CSV…</button>
+              <button class="btn" id="bCsv">${icon("table")} Экспорт в Excel — оформленная таблица…</button>
               ${api ? `<button class="btn" id="bFolder">${icon("folder")} Открыть папку с данными</button>` : ""}
             </div>
             <h4 class="sub-h">Автокопии <span class="muted">${api ? "при каждом запуске" : "раз в 12 часов, на этом устройстве"}</span></h4>
@@ -90,6 +102,13 @@ const SettingsView = {
   bind() {
     const s = Store.settings, api = Store.api();
     const set = (k, v, rerender = true) => { s[k] = v; Store.commit("settings"); applyTheme(); if (rerender) this.render(); };
+    $$("[data-feat]").forEach(b => b.onclick = () => { s.features = { ...s.features, [b.dataset.feat]: !feat(b.dataset.feat) }; Store.commit("settings"); renderChrome(); this.render(); });
+    $("#fSimple").onclick = () => { s.features = { ...SIMPLE_FEATURES }; s.colorColumns = false; Store.commit("settings"); renderChrome(); this.render(); toast("Простой режим", "Оставлены только основные функции", "ok", "sliders"); };
+    $("#fAll").onclick = () => { s.features = { ...DEFAULT_FEATURES }; Store.commit("settings"); renderChrome(); this.render(); };
+    $("#fKeys")?.addEventListener("click", () => showHotkeys());
+    $("#sDense").onclick = () => set("density", s.density === "compact" ? "normal" : "compact");
+    $("#sDebt")?.addEventListener("change", e => { s.debtDays = +e.target.value; Store.commit("settings"); });
+    $("#bXls").onclick = () => Importer.open();
     $$("#sTheme button").forEach(b => b.onclick = () => set("theme", b.dataset.v));
     $$("#sAccent [data-c]").forEach(b => b.onclick = () => set("accent", b.dataset.c));
     $("#sAccentCustom").onchange = e => set("accent", e.target.value);
@@ -106,10 +125,10 @@ const SettingsView = {
     $("#sGoal").onchange = e => { s.monthlyGoal = parseMoney(e.target.value); e.target.value = fmt(s.monthlyGoal); Store.commit("settings"); };
     $("#sTax").onclick = () => set("taxEnabled", !s.taxEnabled);
     $("#sTaxRate")?.addEventListener("change", e => { const v = Math.max(0, Math.min(50, parseFloat(e.target.value.replace(",", ".")) || 0)); set("taxRate", v); });
-    $("#sRate").onfocus = e => { e.target.value = String(s.hourlyRate); };
-    $("#sRate").onchange = e => { s.hourlyRate = parseMoney(e.target.value); e.target.value = fmt(s.hourlyRate); Store.commit("settings"); };
-    $("#sHourlyAll").onclick = () => set("hourlyAll", !s.hourlyAll);
-    $("#sRound").onchange = e => { s.timeRound = +e.target.value; Store.commit("settings"); };
+    $("#sRate")?.addEventListener("focus", e => { e.target.value = String(s.hourlyRate); });
+    $("#sRate")?.addEventListener("change", e => { s.hourlyRate = parseMoney(e.target.value); e.target.value = fmt(s.hourlyRate); Store.commit("settings"); });
+    $("#sHourlyAll")?.addEventListener("click", () => set("hourlyAll", !s.hourlyAll));
+    $("#sRound")?.addEventListener("change", e => { s.timeRound = +e.target.value; Store.commit("settings"); });
     $("#sUndo").onclick = () => set("undoDelete", !s.undoDelete);
     $("#sGame").onclick = () => { set("showGame", !s.showGame); evaluateGame(true); renderChrome(); };
     $("#sGameNotify")?.addEventListener("click", () => set("gameNotify", !s.gameNotify));
@@ -125,7 +144,7 @@ const SettingsView = {
     $("#sIcs").onclick = () => exportICS();
     $("#bExport").onclick = () => exportBackup();
     $("#bImport").onclick = () => importBackup();
-    $("#bCsv").onclick = () => exportCSV();
+    $("#bCsv").onclick = () => ExcelExport.open();
     $("#bFolder")?.addEventListener("click", () => api.open_data_dir());
   },
 
@@ -157,7 +176,19 @@ const SettingsView = {
     const box = $("#updBox");
     if (!box) return;
     if (!Updater.supported) {
-      box.innerHTML = `<h3>${icon("download")}Версия</h3><div class="muted" style="font-size:13px">COMLOG ${APP_VERSION}. Новая версия для ПК — новый COMLOG.exe; данные сохраняются.</div>`;
+      const api = Store.api(), remote = Store.local.remoteUi !== false, site = Store.settings.siteUrl;
+      const from = location.protocol.startsWith("http") && !/^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "с сайта" : "встроенная";
+      box.innerHTML = `<h3>${icon("download")}Обновления<span class="sub">версия ${APP_VERSION} · ${from}</span></h3>
+        ${api ? `<div class="set-row"><div class="sr-l"><div>Обновляться с сайта</div><div>При запуске COMLOG берёт свежий интерфейс с вашего GitHub Pages. Без интернета — встроенная версия</div></div><button class="toggle ${remote ? "on" : ""}" id="upRemote"></button></div>
+        <div class="set-row"><div class="sr-l"><div>Адрес веб-версии</div><div>${site ? "Заполнился сам с телефона через синхронизацию" : "Например: https://логин.github.io/comlog/"}</div></div><input class="field" id="upSite" value="${esc(site)}" placeholder="https://…github.io/comlog/" autocomplete="off"></div>
+        <div class="muted small" style="margin-top:6px">Изменения применятся при следующем запуске. Новый COMLOG.exe нужен, только если меняется сама оболочка программы.</div>` : ""}`;
+      $("#upRemote")?.addEventListener("click", async () => { Store.local.remoteUi = !remote; await Store.saveLocal(); this.renderUpdates(); });
+      $("#upSite")?.addEventListener("change", e => {
+        let v = e.target.value.trim();
+        if (v && !/^https:\/\//.test(v)) v = "https://" + v.replace(/^\/+/, "");
+        if (v && !v.endsWith("/")) v += "/";
+        Store.settings.siteUrl = v; Store.commit("settings"); this.renderUpdates();
+      });
       return;
     }
     const auto = Store.local.autoUpdate !== false, newer = Updater.latest && Updater.latest !== APP_VERSION;
@@ -182,7 +213,8 @@ const SettingsView = {
             <div class="row tight" style="margin-top:8px"><input class="field" id="syToken" type="password" placeholder="ghp_… токен GitHub" autocomplete="off"><button class="btn sm primary" id="syCreate">Создать</button></div>
             <a class="link small" href="https://github.com/settings/tokens/new?scopes=gist&description=COMLOG" target="_blank" rel="noopener">Получить токен на GitHub →</a></div>
           <div class="step"><b>На втором устройстве</b>: вставьте код подключения с первого.
-            <div class="row tight" style="margin-top:8px"><input class="field" id="syCode" placeholder="COMLOG-…" autocomplete="off"><button class="btn sm" id="syConnect">Подключить</button></div></div>
+            <div class="row tight" style="margin-top:8px"><input class="field" id="syCode" placeholder="COMLOG-…" autocomplete="off"><button class="btn sm" id="syConnect">Подключить</button></div>
+            ${"mediaDevices" in navigator ? `<button class="btn sm" id="syScan" style="margin-top:8px">${icon("qr")} Сканировать QR-код с экрана ПК</button>` : ""}</div>
         </div>`;
       $("#syCreate").onclick = async () => {
         const b = $("#syCreate"); b.disabled = true; b.textContent = "Создаю…";
@@ -190,6 +222,7 @@ const SettingsView = {
         catch (e) { toast("Не получилось", e.message, "err", "x"); }
         this.renderSync(); Sync.render();
       };
+      $("#syScan")?.addEventListener("click", () => scanQR(code => { $("#syCode").value = code; $("#syConnect").click(); }));
       $("#syConnect").onclick = async () => {
         const b = $("#syConnect"); b.disabled = true; b.textContent = "Подключаю…";
         try { await Sync.connect($("#syCode").value); toast("Устройство подключено", "Данные объединены", "ok", "sync"); }
@@ -202,9 +235,10 @@ const SettingsView = {
       <h3>${icon("sync")}Синхронизация<span class="sub">${Sync.busy ? "идёт…" : c.error ? `<span class="red">ошибка</span>` : c.last ? "работает" : ""}</span></h3>
       <div class="sync-state ${c.error ? "err" : "ok"}">${c.error ? esc(c.error) : c.last ? `Последняя синхронизация: ${new Date(c.last).toLocaleString("ru-RU")}` : "Ещё не синхронизировано"}</div>
       <div class="set-row"><div class="sr-l"><div>Автоматически</div><div>При запуске, после изменений и раз в 3 минуты</div></div><button class="toggle ${c.auto ? "on" : ""}" id="syAuto"></button></div>
-      <div class="set-row"><div class="sr-l"><div>Код подключения</div><div>Вставьте на другом устройстве. Никому не показывайте — в нём ключ к данным.</div></div><button class="btn sm" id="syCopy">${icon("copy")} Копировать</button></div>
+      <div class="set-row"><div class="sr-l"><div>Код подключения</div><div>Вставьте на другом устройстве. Никому не показывайте — в нём ключ к данным.</div></div><div class="row tight"><button class="btn sm" id="syQR">${icon("qr")} QR-код</button><button class="btn sm" id="syCopy">${icon("copy")} Копировать</button></div></div>
       <div class="row wrap" style="margin-top:12px"><button class="btn sm primary" id="syNow" ${Sync.busy ? "disabled" : ""}>${icon("sync")} Синхронизировать</button><div class="spacer"></div><button class="btn sm ghost danger" id="syOff">Отключить</button></div>`;
     $("#syAuto").onclick = async () => { c.auto = !c.auto; await Store.saveLocal(); this.renderSync(); };
+    $("#syQR").onclick = () => showQR(c.code);
     $("#syCopy").onclick = async () => {
       try { await navigator.clipboard.writeText(c.code); toast("Код скопирован", "Отправьте его себе, например в «Избранное» Telegram", "ok", "copy"); }
       catch { promptBox("Код подключения", "Скопируйте вручную:", c.code); }

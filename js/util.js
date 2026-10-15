@@ -177,6 +177,33 @@ async function saveFile(name, text, mime = "application/json") {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   return name;
 }
+/** Сохранить двоичный файл (картинку): на ПК — через диалог, на телефоне — через «Поделиться». */
+async function saveBlob(name, blob) {
+  const api = Store.api();
+  if (api && api.save_file_b64) {
+    const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1]); fr.readAsDataURL(blob); });
+    return api.save_file_b64(name, b64);
+  }
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return name; }
+    catch (e) { if (e.name === "AbortError") return null; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return name;
+}
+/** Подгрузить сторонний скрипт по требованию (сканер QR, чтение Excel). */
+const loadedScripts = {};
+function loadScript(src) {
+  return loadedScripts[src] ||= new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = () => { delete loadedScripts[src]; rej(new Error("Не удалось загрузить " + src)); };
+    document.head.appendChild(s);
+  });
+}
+
 function pickTextFile(accept) {
   return new Promise(resolve => {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = accept;

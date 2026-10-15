@@ -26,7 +26,8 @@ const AnalyticsView = {
       <div class="grid two" style="margin-top:16px">
         <div class="card"><h3>${icon("users")}Топ клиентов<span class="sub">нажмите, чтобы открыть</span></h3><div id="aTopClients"></div></div>
         <div class="card"><h3>${icon("star")}Топ услуг<span class="sub">доход и количество</span></h3><div id="aTopServices"></div></div>
-      </div>`;
+      </div>
+      <div class="grid two" style="margin-top:16px" id="aExtra"></div>`;
     $("#aClient").onchange = e => { this.client = e.target.value; this.render(); };
     $$("#aGroup button").forEach(b => b.onclick = () => { this.grouping = b.dataset.g; this.render(); });
     $$("#aMode button").forEach(b => b.onclick = () => { this.cumulative = b.dataset.c === "1"; this.render(); });
@@ -75,5 +76,44 @@ const AnalyticsView = {
     $("#aTopClients").innerHTML = barsHTML(top("client"), true);
     $("#aTopServices").innerHTML = barsHTML(top("service"), false, true);
     $$("#aTopClients [data-client]").forEach(el => el.onclick = () => ClientsView.open(el.dataset.client, this.period));
+    $("#aExtra").innerHTML = rateCardHTML(s.list) + speedCardHTML(r);
+    $$("#aExtra [data-client]").forEach(el => el.onclick = () => ClientsView.open(el.dataset.client, this.period));
   },
 };
+
+/** Реальная ставка за час: деньги по заказам с засечённым временем / часы. */
+function rateCardHTML(list) {
+  const m = new Map();
+  for (const o of list) {
+    const ms = workMs(o);
+    if (ms < 60000 || !o.price) continue;
+    const k = serviceKey(o.service) || "—";
+    const x = m.get(k) || { name: o.service.trim() || "Без названия", ms: 0, sum: 0, n: 0 };
+    x.ms += ms; x.sum += o.price; x.n++;
+    m.set(k, x);
+  }
+  if (!m.size) return (feat("track") || feat("hourly")) ? `<div class="card"><h3>${icon("stopwatch")}Реальная ставка за час</h3>
+    <div class="muted small">Засекайте время работы (⏱ у заказа или таймер почасовой оплаты) — здесь появится, сколько вы зарабатываете за час на каждой услуге.</div></div>` : "";
+  const rows = [...m.values()].map(x => ({ ...x, rate: x.sum / (x.ms / 3600000) })).sort((a, b) => b.rate - a.rate);
+  const max = Math.max(...rows.map(x => x.rate));
+  const totalMs = rows.reduce((a, x) => a + x.ms, 0), totalSum = rows.reduce((a, x) => a + x.sum, 0);
+  return `<div class="card"><h3>${icon("stopwatch")}Реальная ставка за час<span class="sub">в среднем ${money(totalSum / (totalMs / 3600000))}/ч</span></h3>
+    <div class="bars">${rows.slice(0, 8).map(x => `<div class="bar-row"><div class="br-top"><span>${esc(x.name)} <small class="muted">· ${x.n} шт., ${fmtDur(x.ms)}</small></span><b>${money(x.rate)}/ч</b></div>
+      <div class="br-track"><i style="width:${x.rate / max * 100}%"></i></div></div>`).join("")}</div></div>`;
+}
+/** Скорость оплаты: сколько дней проходит от сдачи работы до денег. */
+function speedCardHTML(r) {
+  const m = new Map();
+  for (const d of paymentDelays()) {
+    if (d.o.date < r.from || d.o.date > r.to) continue;
+    const c = d.o.client.trim() || "Без имени";
+    const x = m.get(c) || { name: c, days: 0, n: 0 };
+    x.days += d.days; x.n++; m.set(c, x);
+  }
+  if (!m.size) return `<div class="card"><h3>${icon("clock")}Скорость оплаты</h3><div class="muted small">Появится, когда у заказов будут отметки «выполнен» и оплаты с датами.</div></div>`;
+  const rows = [...m.values()].map(x => ({ ...x, avg: x.days / x.n })).sort((a, b) => a.avg - b.avg);
+  const max = Math.max(1, ...rows.map(x => x.avg));
+  return `<div class="card"><h3>${icon("clock")}Скорость оплаты<span class="sub">дней от сдачи до оплаты</span></h3>
+    <div class="bars">${rows.slice(0, 8).map(x => `<div class="bar-row clickable" data-client="${esc(x.name)}"><div class="br-top"><span>${esc(x.name)} <small class="muted">· ${x.n} ${plural(x.n, "заказ", "заказа", "заказов")}</small></span><b>${x.avg < 1 ? "сразу" : `≈ ${Math.round(x.avg)} ${plural(Math.round(x.avg), "день", "дня", "дней")}`}</b></div>
+      <div class="br-track speed"><i style="width:${Math.max(4, x.avg / max * 100)}%"></i></div></div>`).join("")}</div></div>`;
+}

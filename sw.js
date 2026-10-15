@@ -1,13 +1,13 @@
 /* Офлайн-режим веб-версии.
    Каждая сборка получает свой номер VERSION (tools/stamp_version.py). Новая версия скачивается целиком
    с ?v=VERSION — так запрос проходит мимо кэша GitHub — и включается сразу; страница перезагружается сама. */
-const VERSION = "2026.10.10-1744";
+const VERSION = "2026.10.16-0016";
 const CACHE = "comlog-" + VERSION;
 const CORE = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
   "fonts/inter-latin.woff2", "fonts/inter-latin-ext.woff2", "fonts/inter-cyrillic.woff2",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon.png",
-  ...["version", "logo", "util", "store", "sync", "chart", "character", "game", "autocomplete", "reminders", "orders", "analytics", "clients", "pricelist", "hero", "settings", "main"].map(f => `js/${f}.js`),
+  ...["version", "logo", "util", "store", "sync", "chart", "character", "game", "autocomplete", "reminders", "orders", "analytics", "clients", "pricelist", "piggy", "estimates", "hero", "wrapped", "importer", "qr", "exporter", "settings", "main"].map(f => `js/${f}.js`),
 ];
 
 self.addEventListener("install", e => {

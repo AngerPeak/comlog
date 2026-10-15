@@ -50,7 +50,7 @@ const AC = {
         .map(([name, count]) => ({ name, sub: `${count} ${plural(count, "заказ", "заказа", "заказов")}` }));
     }
     const cat = serviceCatalog();
-    const tpl = cat.filter(s => s.template && match(s.name))
+    const tpl = cat.filter(s => s.template && s.template.qty <= 1 && match(s.name))
       .map(s => ({ name: s.template.service, price: s.template.price, color: s.color, sub: "прайс-лист", tpl: true }));
     const rest = cat.filter(s => !s.template && !s.hidden && match(s.name) && s.name.toLowerCase() !== q)
       .sort((a, b) => b.count - a.count).slice(0, 12)
